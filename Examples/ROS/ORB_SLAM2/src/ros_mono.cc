@@ -30,17 +30,25 @@
 #include<opencv2/core/core.hpp>
 
 #include"../../../include/System.h"
+#include"std_msgs/String.h"
+#include <sstream>
 
 using namespace std;
 
 class ImageGrabber
 {
 public:
-    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){}
+    ImageGrabber(ORB_SLAM2::System* pSLAM):mpSLAM(pSLAM){
+        chatter_pub = n.advertise<std_msgs::String>("SLAM", 1000);  
+    }
 
     void GrabImage(const sensor_msgs::ImageConstPtr& msg);
 
     ORB_SLAM2::System* mpSLAM;
+
+    ros::NodeHandle n;
+    ros::Publisher chatter_pub;
+
 };
 
 int main(int argc, char **argv)
@@ -91,7 +99,25 @@ void ImageGrabber::GrabImage(const sensor_msgs::ImageConstPtr& msg)
         return;
     }
 
-    mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+    cv::Mat Tcw = mpSLAM->TrackMonocular(cv_ptr->image,cv_ptr->header.stamp.toSec());
+    if(ros::ok()){
+        
+        if(!Tcw.empty()){
+            cv::Mat Rwc = Tcw.rowRange(0,3).colRange(0,3).t();
+            cv::Mat twc = -Rwc*Tcw.rowRange(0,3).col(3);
+            vector<float> q = ORB_SLAM2::Converter::toQuaternion(Rwc);
+
+            std_msgs::String msg;
+            std::stringstream ss;
+            ss << setprecision(9) << twc.at<float>(0) << " " << twc.at<float>(1) << " " << twc.at<float>(2) << " " << q[0] << " " << q[1] << " " << q[2] << " " << q[3] << endl;
+            msg.data = ss.str();
+            //cout << msg.data << endl;
+            //ROS_INFO("%s", msg.data.c_str());
+            chatter_pub.publish(msg);
+            ros::spinOnce();  
+        }    
+
+    }
 }
 
 
